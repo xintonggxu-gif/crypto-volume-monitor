@@ -72,9 +72,6 @@ def fetchhashkey():
     resp.raise_for_status()
     data = resp.json()
 
-    # 有些接口直接返回 list，稳一点写法
-    if isinstance(data, dict) and 'data' in data:
-        data = data['data']
 
     df = pd.DataFrame(data)
     col = 'v'
@@ -86,6 +83,7 @@ def fetchhashkey():
         })
     df["exchange"] = "hashkey"
     dfvol = df[['exchange', 'symbol', 'volume24h']]
+    
     
     return dfvol
 
@@ -117,11 +115,7 @@ def fetchcoinbase():
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
     data = resp.json()
-
-    # 官方文档页示例有嵌套 list，稳一点处理
-    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-        data = data[0]
-
+    
     df = pd.DataFrame(data)
     col = 'spot_volume_24hour'
     df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -171,6 +165,7 @@ def fetch_all():
         try:
             df = fetch_func()
             success_dfs.append(df)
+        #add error type and problem exchanges' name 
         except Exception as e:
             errors.append({
                 "exchange": exchange_name,
@@ -186,5 +181,21 @@ def fetch_all():
     error_df = pd.DataFrame(errors)
     return all_df, error_df
 
+
+def clean_volume_table(df):
+ 
+    df = df.copy() #wont change the original df    
+    df = df.dropna(subset = ["volume24h"])
+    df = df.drop_duplicates(subset = ['exchange', 'symbol'], keep = 'last')
+    df = df.sort_values(by=["exchange", "volume24h"], ascending=[True, False])
+    df = df.reset_index(drop=True)
+
+    return df
+    
+ 
+    
+ 
+    
 voldf, errordf = fetch_all()
-print(voldf.head())
+finaldf = clean_volume_table(voldf)
+print(finaldf.head(), errordf)
