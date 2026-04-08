@@ -4,6 +4,7 @@
 import json
 import requests
 import pandas as pd
+from datetime import datetime, timezone
 
 def fetchbinance():
     url = 'https://api.binance.com/api/v3/ticker/24hr'
@@ -181,7 +182,7 @@ def fetch_all():
     error_df = pd.DataFrame(errors)
     return all_df, error_df
 
-
+    
 def clean_volume_table(df):
  
     df = df.copy() #wont change the original df    
@@ -191,11 +192,26 @@ def clean_volume_table(df):
     df = df.reset_index(drop=True)
 
     return df
+
+def checkdata(df):
+    print ('row: ', len(df))
+    print("null volume24h:", df['volume24h'].isna().sum())
+    print("duplicate exchange+symbol:", df.duplicated(["exchange", "symbol"]).sum())
+    print(df.groupby("exchange").size())
+        
+def add_run_time(voldf, errordf): 
+    voldf = voldf.copy()
+    errordf = errordf.copy()
+    run_date_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    voldf["run_date_utc"] = run_date_utc
+    errordf["run_date_utc"] = run_date_utc 
+    return voldf, errordf
     
- 
     
  
     
 voldf, errordf = fetch_all()
-finaldf = clean_volume_table(voldf)
-print(finaldf.head(), errordf)
+voldf2 = clean_volume_table(voldf)
+checkdata(voldf2)
+voldf3, errordf2 = add_run_time(voldf2, errordf)
+print(voldf3.head(), errordf2)
