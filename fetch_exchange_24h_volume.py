@@ -5,6 +5,7 @@ import json
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+import asyncio
 
 def fetchbinance():
     url = 'https://api.binance.com/api/v3/ticker/24hr'
@@ -148,7 +149,7 @@ def fetchbitget():
     
     return dfvol
 
-def fetch_all():
+async def fetch_all():
     fetch_jobs = [
         ("binance", fetchbinance),
         ("bybit", fetchbybit),
@@ -158,21 +159,25 @@ def fetch_all():
         ("coinbase", fetchcoinbase),
         ("bitget", fetchbitget),
     ]
-
+    
+    task = [asyncio.to_thread(fetch_func) 
+            for exchange_name, fetch_func in fetch_jobs]
+    
+    results = await asyncio.gather(*task, return_exceptions=True)
+    
     success_dfs = []
     errors = []
-
-    for exchange_name, fetch_func in fetch_jobs:
-        try:
-            df = fetch_func()
-            success_dfs.append(df)
-        #add error type and problem exchanges' name 
-        except Exception as e:
+    
+    for (exchange_name, fetch_func), result in zip(fetch_jobs, results):
+        if isinstance(result, Exception):
             errors.append({
                 "exchange": exchange_name,
-                "error_type": type(e).__name__,
-                "error_message": str(e)
+                "error_type": type(result).__name__,
+                "error_message": str(result)
             })
+        else:
+            success_dfs.append(result)
+
 
     if success_dfs:
         all_df = pd.concat(success_dfs, ignore_index=True)
@@ -209,9 +214,12 @@ def add_run_time(voldf, errordf):
     
     
  
-    
-voldf, errordf = fetch_all()
-voldf2 = clean_volume_table(voldf)
-checkdata(voldf2)
-voldf3, errordf2 = add_run_time(voldf2, errordf)
-print(voldf3.head(), errordf2)
+async def main():    
+    voldf, errordf = await fetch_all()
+    voldf2 = clean_volume_table(voldf)
+    checkdata(voldf2)
+    voldf3, errordf2 = add_run_time(voldf2, errordf)
+    print(voldf3.head(), errordf2)
+
+if __name__ == "__main__":
+    asyncio.run(main())
