@@ -216,10 +216,27 @@ def add_run_time(voldf, errordf):
  
 async def main():    
     voldf, errordf = await fetch_all()
+
     voldf2 = clean_volume_table(voldf)
     checkdata(voldf2)
+
     voldf3, errordf2 = add_run_time(voldf2, errordf)
-    print(voldf3.head(), errordf2)
+
+    print(voldf3.head())
+    print(errordf2)
+
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    
+    volume_file = f"exchange_24h_volume_{timestamp}.csv"
+    error_file = f"exchange_24h_volume_errors_{timestamp}.csv"
+
+    voldf3.to_csv(volume_file, index=False)
+    errordf2.to_csv(error_file, index=False)
+
+    print(f"Saved volume table to: {volume_file}")
+    print(f"Saved error table to: {error_file}")
 
 if __name__ == "__main__":
     asyncio.run(main())
