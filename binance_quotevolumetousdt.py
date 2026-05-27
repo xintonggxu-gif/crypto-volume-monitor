@@ -88,48 +88,101 @@ def pricemap():
     price_map = dict(zip(df["symbol"], df["weightedAvgPrice"]))
 
     return price_map
-        
-def get_rate_to_usdt(asset, price_map):
+
+def coinbase_usdt_rates():
+    """
+    Coinbase 官方 exchange-rates API.
+
+    返回的 rates 含义是：
+    rates["JPY"] = 1 USDT 等于多少 JPY
+    rates["USD"] = 1 USDT 等于多少 USD
+    """
+    url = "https://api.coinbase.com/v2/exchange-rates"
+    params = {
+        "currency": "USDT"
+    }
+
+    resp = requests.get(url, params=params, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+
+    rates = data["data"]["rates"]
+
+    # 转成数字
+    clean_rates = {}
+    for asset, rate in rates.items():
+        try:
+            clean_rates[asset.upper()] = float(rate)
+        except (TypeError, ValueError):
+            pass
+
+    return clean_rates        
+
+def get_rate_to_usdt(asset, price_map, coinbase_rates):
     if pd.isna(asset):
         return None
-    
+
+    asset = str(asset).upper().strip()
+
     if asset == "USDT":
         return 1.0
 
-    # 例如 BTC -> BTCUSDT, FDUSD -> FDUSDUSDT
+    # 1. 先用 Binance direct
+    # 例如 BTCUSDT = 1 BTC 多少 USDT
     direct_symbol = asset + "USDT"
 
     if direct_symbol in price_map:
-        return price_map[direct_symbol]
+        price = price_map[direct_symbol]
 
-    # 例如 TRY -> USDTTRY
-    # USDTTRY = 32 表示 1 USDT = 32 TRY
-    # 所以 1 TRY = 1 / 32 USDT
+        if pd.notna(price) and price != 0:
+            return float(price)
+
+    # 2. 再用 Binance inverse
+    # 例如 USDTTRY = 1 USDT 多少 TRY
+    # 所以 1 TRY = 1 / USDTTRY USDT
     inverse_symbol = "USDT" + asset
 
     if inverse_symbol in price_map:
         inverse_price = price_map[inverse_symbol]
 
-        if inverse_price != 0:
-            return 1 / inverse_price
+        if pd.notna(inverse_price) and inverse_price != 0:
+            return 1 / float(inverse_price)
+
+    # 3. Binance 找不到，再用 Coinbase fallback
+    # Coinbase rates[asset] = 1 USDT 多少 asset
+    # 所以 1 asset = 1 / rates[asset] USDT
+    if asset in coinbase_rates:
+        usdt_to_asset = coinbase_rates[asset]
+
+        if usdt_to_asset != 0:
+            return 1 / usdt_to_asset
 
     return None
 
 def convert_to_usdt(df_selected):
-    price_map = pricemap()
+    try:
+        price_map = pricemap()
+    except Exception as e:
+        price_map = {}
+        print(f"Warning: failed to load binance fallback rates: {e}")
+    
+    try:
+        coinbase_rates = coinbase_usdt_rates()
+    except Exception as e:
+        coinbase_rates = {}
+        print(f"Warning: failed to load Coinbase fallback rates: {e}")
 
     df_selected = df_selected.copy()
 
-
     df_selected["rate_to_usdt"] = df_selected["quoteAsset"].apply(
-        lambda asset: get_rate_to_usdt(asset, price_map)
+        lambda asset: get_rate_to_usdt(asset, price_map, coinbase_rates)
     )
 
     df_selected["volume_usdt"] = (
         df_selected["quoteVolume"] * df_selected["rate_to_usdt"]
     )
 
-    return df_selected    
+    return df_selected
 
 def add_run_time(df_selected): 
     df_selected  = df_selected.copy()
