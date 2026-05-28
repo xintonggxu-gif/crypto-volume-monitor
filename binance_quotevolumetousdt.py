@@ -4,6 +4,9 @@ import json
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent
+ZERO_FEE_FILE = BASE_DIR / "data" / "binance_zero_fee_promotions.xlsx"
 
 def fetchbinance():
     url = 'https://api.binance.com/api/v3/ticker/24hr'
@@ -11,11 +14,16 @@ def fetchbinance():
     resp.raise_for_status()
     data = resp.json()
     df = pd.DataFrame(data)
-    col = 'quoteVolume'
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-    dfvol = df[['symbol', 'quoteVolume']]
+    col1 = 'quoteVolume'
+    col2 = 'bidPrice'
+    col3 = 'askPrice'
+    df[col1] = pd.to_numeric(df[col1], errors="coerce")
+    df[col2] = pd.to_numeric(df[col2], errors="coerce")
+    df[col3] = pd.to_numeric(df[col3], errors="coerce")
+    dfvol = df[['symbol', col1, col2, col3]]
     
     return dfvol
+
 
 def fetchquoteasset():
     url = 'https://api.binance.com/api/v3/exchangeInfo'
@@ -23,15 +31,13 @@ def fetchquoteasset():
     resp.raise_for_status()
     data = resp.json()
     df = pd.DataFrame(data["symbols"])
-    dfasset = df[['symbol','quoteAsset']]
+    dfasset = df[['symbol','quoteAsset', "isMarginTradingAllowed"]]
     return dfasset
 
           
 
 def fetchsymbol(dfvol, dfasset):
-    file_path = "/Users/karina/Downloads/Zero-Fees_Spot_Binance.xlsx"
-    
-    df = pd.read_excel(file_path, header=1)
+    df = pd.read_excel(ZERO_FEE_FILE, header=1)
     
     symbols = (
         df["Symbol"]
@@ -181,7 +187,12 @@ def convert_to_usdt(df_selected):
     df_selected["volume_usdt"] = (
         df_selected["quoteVolume"] * df_selected["rate_to_usdt"]
     )
-
+    df_selected["bidprice_usdt"] = (
+        df_selected["bidPrice"] * df_selected["rate_to_usdt"]
+    )
+    df_selected["askprice_usdt"] = (
+        df_selected["askPrice"] * df_selected["rate_to_usdt"]
+    )
     return df_selected
 
 def add_run_time(df_selected): 
